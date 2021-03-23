@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Mar 19 11:06:58 2021
+
+@author: 
+   ___  _ ____             __          
+  / _ \(_) / /__ ___      / /  ___ ___ 
+ / // / / / / -_) _ \    / /__/ -_) -_)
+/____/_/_/_/\__/_//_/   /____/\__/\__/ 
+                                       
+"""
+
+#White light analysis
+#import the required libraries
+
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.optimize import curve_fit
+
+
+#set the filepath
+path = '/home/dillen/University/Python/Beer Lambert Law/White LED/'
+colours = ['red','blue','green']
+
+
+
+
+#define a function needed for optimisation later
+#create the function for the curve fit to optimise
+def func(x,e):
+    #l is the length of the container which is 5.5 cm
+    l=5.5e-2
+    arg = -x*e*l
+    return np.exp(arg)
+
+def fit(concentration,intensity,wavelength,colour):
+    fitCoeff,cov = curve_fit(func,concentration, intensity,[100])
+    curveError = np.sqrt(cov[0][0])
+    print("The value of ε for %d nm using %s dye is %f with an error of ±%f"%(wavelength,colour,*fitCoeff,curveError))
+    yVals = []
+    xVals = np.linspace(0,concentration[-1],100)
+    for x in xVals:
+        yVals.append(func(x,*fitCoeff))
+    return [xVals,yVals]
+
+
+
+#import the concentration values
+redConcentration, blueConcentration, greenConcentration = np.loadtxt(path+"WhiteLEDConcentration.csv",skiprows=1,unpack=True,delimiter=',')
+#technically this is redundant but will definitely help show that concentration is aligned with the colours
+concentration = [redConcentration,blueConcentration,greenConcentration]
+
+
+
+
+
+
+for colourIndex in range(len(colours)):
+    intensities = []
+    for id in range(1,16):    
+        wavelength,intensity = np.loadtxt(path+'/%s%d.csv'%(colours[colourIndex],id),delimiter=';',skiprows=33,max_rows=3682-34,unpack=True)
+        intensities.append(intensity)
+    
+    
+    #this takes the average value of the three measurements we took for each concentration
+    #so we have 5 different concentration levels
+    averageIntensity = [[],[],[],[],[]]
+    for i in range(5):
+        # i goes over the different concentration levels
+        for j in range(len(intensities[0])):
+            # j goes over the individual intensity value for a specific wavelength
+            avg = (intensities[i][j]+intensities[i+1][j]+intensities[i+2][j])/3
+            averageIntensity[i].append(avg)
+    
+        #plot the data
+        plt.plot(wavelength, averageIntensity[i])
+        plt.xlabel("wavelength (nm)")
+        plt.ylabel("Intensity (arbitrary units)")
+        plt.grid()
+        plt.title('Average light intensity measured as a function of wavelength through %s dye'%(colours[colourIndex]))
+        #format the legend a bit
+        plt.legend(['Concentration: '+str('{:e}'.format(x)) for x in concentration[colourIndex]])
+    plt.show()
+
+    
+    
+    #pick wavelengths to find the extinction value for
+    #One of the wavelength I'm curious abot will be the largest intensity so this part automatically finds that wavelength.
+    #---
+    indexOfLargestI = averageIntensity[0].index(np.max(averageIntensity[0]))
+    largestILambda = wavelength[indexOfLargestI]
+    #---
+    #I just chose a couple of wavelength, add as many as you wish
+    specificWavelength = [largestILambda,550,600,570,690]
+    for l in specificWavelength:
+        #find the index of the associated intensity value 
+        #quite often the given wavength does not match a value in the wavelength so we need to make sure it does
+        if l in wavelength:
+            intensityIndex = wavelength.tolist().index(l)
+        else:
+            i = 0
+            while l > wavelength[i]:
+                i+=1
+            print(i)
+            intensityIndex = i 
+        #now gather the 5 intensity points and normalise them
+        #keyIntensities will be an array of the normalised intensities at the given wavelength, thus I know the first vaue will always be 1
+        keyIntensities = []
+        for i in range(5):
+            keyIntensities.append(averageIntensity[i][intensityIndex])
+        #normalise the data
+        keyIntensities = [x/keyIntensities[0] for x in keyIntensities]
+        
+        #now we fit the data
+        fittedCurve = fit(concentration[colourIndex],keyIntensities,l,colours[colourIndex])
+        
+        #now we plot all the data
+        plt.plot(fittedCurve[0],fittedCurve[1])
+        plt.plot(redConcentration,keyIntensities)
+        plt.grid()
+        plt.xlabel('Concentration (g/kg)')
+        plt.ylabel('Intensity/I0')
+        plt.legend(['Fitted exponential curve','Measured data points'])
+        plt.title('Intensity of %d nm light through %s dye as a function of concentration'%(l,colours[colourIndex]))
+        plt.show()
+                
+    
+    
+    
+    
+    
+    
+    
